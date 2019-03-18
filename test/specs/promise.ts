@@ -1,6 +1,6 @@
 import assert from 'assert';
 
-import { co } from '../../src';
+import { asyncify } from '../../src';
 
 function getPromise(val: any, err?: any) {
   return new Promise(function (resolve, reject) {
@@ -9,10 +9,10 @@ function getPromise(val: any, err?: any) {
   });
 }
 
-describe('co(* -> yield <promise>', function(){
+describe('asyncify(* -> yield <promise>', function(){
   describe('with one promise yield', function(){
     it('should work', function(){
-      return co(function *(){
+      return asyncify(function *(){
         var a = yield getPromise(1);
         assert.equal(1, a);
       });
@@ -21,7 +21,7 @@ describe('co(* -> yield <promise>', function(){
 
   describe('with several promise yields', function(){
     it('should work', function(){
-      return co(function *(){
+      return asyncify(function *(){
         var a = yield getPromise(1);
         var b = yield getPromise(2);
         var c = yield getPromise(3);
@@ -35,7 +35,7 @@ describe('co(* -> yield <promise>', function(){
     it('should throw and resume', function(){
       var error;
 
-      return co(function *(){
+      return asyncify(function *(){
         try {
           yield getPromise(1, new Error('boom'));
         } catch (err) {
@@ -51,16 +51,16 @@ describe('co(* -> yield <promise>', function(){
 
   describe('when yielding a non-standard promise-like', function(){
     it('should return a real Promise', function() {
-      assert(co(function *(){
+      assert(asyncify(function *(){
         yield { then: function(){} };
       }) instanceof Promise);
     });
   })
 })
 
-describe('co(function) -> promise', function(){
+describe('asyncify(function) -> promise', function(){
   it('return value', function(done){
-    co(function(){
+    asyncify(function(){
       return 1;
     }).then(function(data){
       assert.equal(data, 1);
@@ -69,7 +69,7 @@ describe('co(function) -> promise', function(){
   })
 
   it('return resolve promise', function(){
-    return co(function(){
+    return asyncify(function(){
       return Promise.resolve(1);
     }).then(function(data){
       assert.equal(data, 1);
@@ -77,7 +77,7 @@ describe('co(function) -> promise', function(){
   })
 
   it('return reject promise', function(){
-    return co(function(){
+    return asyncify(function(){
       return Promise.reject(1);
     }).catch(function(data){
       assert.equal(data, 1);
@@ -85,7 +85,7 @@ describe('co(function) -> promise', function(){
   })
 
   it('should catch errors', function(){
-    return co(function(){
+    return asyncify(function(){
       throw new Error('boom');
     }).then(function () {
       throw new Error('nope');

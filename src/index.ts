@@ -2,18 +2,36 @@ function processNextYeldable(generator, generatorInput, resolve, reject, shouldT
   const currentGeneratorOutput = shouldThrowError ? generator.throw(generatorInput) : generator.next(generatorInput);
   const currentValue = currentGeneratorOutput.value;
 
-  if (currentValue === undefined) {
-    resolve(generatorInput);
-  }
-
-  if (currentValue instanceof Promise) {
-    currentValue
-      .then((promiseValue) => {
-        processNextYeldable(generator, promiseValue, resolve, reject);
-      })
-      .catch((error) => {
-        processNextYeldable(generator, error, resolve, reject, true);
-      })
+  if (currentGeneratorOutput.done) {
+    resolve(currentGeneratorOutput.value);
+  } else {
+    if (currentValue instanceof Promise) {
+      currentValue
+        .then((promiseValue) => {
+          processNextYeldable(generator, promiseValue, resolve, reject);
+        })
+        .catch((error) => {
+          processNextYeldable(generator, error, resolve, reject, true);
+        })
+    }
+  
+    if (Array.isArray(currentValue)) {
+      const promises = currentValue.map((promiseOrGenerator) => {
+        if (promiseOrGenerator instanceof Promise) {
+          return promiseOrGenerator;
+        }
+  
+        return new Promise((resolve, reject) => processNextYeldable(promiseOrGenerator, null, resolve, reject));
+      });
+  
+      Promise.all(promises)
+        .then((promiseValue) => {
+          processNextYeldable(generator, promiseValue, resolve, reject);
+        })
+        .catch((error) => {
+          processNextYeldable(generator, error, resolve, reject, true);
+        });
+    }
   }
 }
 
@@ -22,10 +40,10 @@ function processPlainFunction(fn: Function, resolve, reject) {
 
   try {
     returnValue = fn();
-  } catch(error) {
+  } catch (error) {
     return reject(error);
   }
-
+  
   if (returnValue instanceof Promise) {
     returnValue
       .then((resolvedValue) => resolve(resolvedValue))
@@ -35,12 +53,12 @@ function processPlainFunction(fn: Function, resolve, reject) {
   }
 }
 
-export function co(generatorOrPlainFn: Function): Promise<any> {
+export function asyncify(generatorFnOrPlainFn: Function): Promise<any> {
   return new Promise((resolve, reject) => {
-    if (generatorOrPlainFn.prototype.toString() === '[object Generator]') {
-      processNextYeldable(generatorOrPlainFn(), null, resolve, reject);
+    if (generatorFnOrPlainFn.prototype.toString() === '[object Generator]') {
+      processNextYeldable(generatorFnOrPlainFn(), null, resolve, reject);
     } else {
-      processPlainFunction(generatorOrPlainFn, resolve, reject);
+      processPlainFunction(generatorFnOrPlainFn, resolve, reject);
     }
   });
 }
