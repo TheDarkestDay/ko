@@ -6,27 +6,47 @@ function processNextYeldable(generator, generatorInput, resolve, reject, shouldT
     resolve(currentGeneratorOutput.value);
   } else {
     if (currentValue instanceof Promise) {
+      // Handling promises
       currentValue
         .then((promiseValue) => {
           processNextYeldable(generator, promiseValue, resolve, reject);
         })
         .catch((error) => {
           processNextYeldable(generator, error, resolve, reject, true);
-        })
-    }
-  
-    if (Array.isArray(currentValue)) {
+        });
+    } else if (Array.isArray(currentValue)) {
+      // Handling arrays
       const promises = currentValue.map((promiseOrGenerator) => {
         if (promiseOrGenerator instanceof Promise) {
           return promiseOrGenerator;
         }
-  
+
         return new Promise((resolve, reject) => processNextYeldable(promiseOrGenerator, null, resolve, reject));
       });
-  
+
       Promise.all(promises)
         .then((promiseValue) => {
           processNextYeldable(generator, promiseValue, resolve, reject);
+        })
+        .catch((error) => {
+          processNextYeldable(generator, error, resolve, reject, true);
+        });
+    } else {
+      // Handling plain objects
+      const result = {};
+
+      const resolveObjectPromise = Object.keys(currentValue).reduce((acc, curr) => {
+        const currentFieldValue = currentValue[curr];
+        const currentPromise = currentFieldValue instanceof Promise ? currentFieldValue : Promise.resolve(currentFieldValue);
+
+        return acc
+          .then(() => currentPromise)
+          .then((value) => result[curr] = value);
+      }, Promise.resolve({}));
+
+      resolveObjectPromise
+        .then(() => {
+          processNextYeldable(generator, result, resolve, reject);
         })
         .catch((error) => {
           processNextYeldable(generator, error, resolve, reject, true);
@@ -43,7 +63,7 @@ function processPlainFunction(fn: Function, resolve, reject) {
   } catch (error) {
     return reject(error);
   }
-  
+
   if (returnValue instanceof Promise) {
     returnValue
       .then((resolvedValue) => resolve(resolvedValue))
