@@ -1,3 +1,43 @@
+function getPromiseFromArray(arr: any[]): Promise<any[]> {
+  const arrayOfPromises = arr.map((elem) => {
+    if (elem instanceof Promise) {
+      return elem;
+    }
+
+    if (Array.isArray(elem)) {
+      return getPromiseFromArray(elem);
+    }
+
+    return new Promise((resolve, reject) => processNextYeldable(elem, null, resolve, reject));
+  });
+
+  return Promise.all(arrayOfPromises);
+}
+
+
+function getPromiseFromObject(obj: any): Promise<any> {
+  const result = {};
+
+  const promiseSequence = Object.keys(obj).reduce((acc, curr) => {
+    const currentFieldValue = obj[curr];
+    let currentPromise;
+
+    if (currentFieldValue instanceof Promise) {
+      currentPromise = currentFieldValue;
+    } else if (currentFieldValue && currentFieldValue.constructor === Object) {
+      currentPromise = getPromiseFromObject(currentFieldValue);
+    } else {
+      currentPromise = Promise.resolve(currentFieldValue);
+    }
+
+    return acc
+      .then(() => currentPromise)
+      .then((value) => result[curr] = value);
+  }, Promise.resolve({}));
+
+  return promiseSequence.then(() => result);
+}
+
 function processNextYeldable(generator, generatorInput, resolve, reject, shouldThrowError = false) {
   const currentGeneratorOutput = shouldThrowError ? generator.throw(generatorInput) : generator.next(generatorInput);
   const currentValue = currentGeneratorOutput.value;
@@ -16,15 +56,9 @@ function processNextYeldable(generator, generatorInput, resolve, reject, shouldT
         });
     } else if (Array.isArray(currentValue)) {
       // Handling arrays
-      const promises = currentValue.map((promiseOrGenerator) => {
-        if (promiseOrGenerator instanceof Promise) {
-          return promiseOrGenerator;
-        }
+      const resolvedArrayPromise = getPromiseFromArray(currentValue);
 
-        return new Promise((resolve, reject) => processNextYeldable(promiseOrGenerator, null, resolve, reject));
-      });
-
-      Promise.all(promises)
+      resolvedArrayPromise
         .then((promiseValue) => {
           processNextYeldable(generator, promiseValue, resolve, reject);
         })
@@ -33,19 +67,10 @@ function processNextYeldable(generator, generatorInput, resolve, reject, shouldT
         });
     } else {
       // Handling plain objects
-      const result = {};
+      const resolvedObjectPromise = getPromiseFromObject(currentValue);
 
-      const resolveObjectPromise = Object.keys(currentValue).reduce((acc, curr) => {
-        const currentFieldValue = currentValue[curr];
-        const currentPromise = currentFieldValue instanceof Promise ? currentFieldValue : Promise.resolve(currentFieldValue);
-
-        return acc
-          .then(() => currentPromise)
-          .then((value) => result[curr] = value);
-      }, Promise.resolve({}));
-
-      resolveObjectPromise
-        .then(() => {
+      resolvedObjectPromise
+        .then((result) => {
           processNextYeldable(generator, result, resolve, reject);
         })
         .catch((error) => {
